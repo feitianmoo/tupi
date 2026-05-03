@@ -1,0 +1,21 @@
+name: Reddit 去广告
+desc: 过滤推广, 关 NSFW 提示, 自动开启翻译(JQ 版)
+force-http-engine:
+  - "gql.reddit.com"
+  - "gql-fed.reddit.com"
+http:
+  mitm:
+    - "gql.reddit.com"
+    - "gql-fed.reddit.com"
+  rewrite:
+    # 移除原有的翻译 Header
+    - >-
+      ^https:\/\/gql(-fed)?\.reddit\.com\/ header-del x-reddit-translations
+    
+    # 自动开启翻译 Header (根据原脚本参数默认值)
+    - >-
+      ^https:\/\/gql(-fed)?\.reddit\.com\/ header-add x-reddit-translations enabled, seo, zh-hans
+    
+    # 核心的 JQ Body Rewrite 逻辑（处理去广告和 NSFW 提示屏蔽）
+    - >-
+      ^https?:\/\/gql(-fed)?\.reddit\.com response-jq 'walk( if type == "object" then (if .isNsfw == true then .isNsfw = false else . end) | (if .isNsfwMediaBlocked == true then .isNsfwMediaBlocked = false else . end) | (if .isNsfwContentShown == false then .isNsfwContentShown = true else . end) | (if (.commentsPageAds | type == "array") then (.commentsPageAds = []) else . end) | (if ( (.node | type == "object") and (.node.cells | type == "array") and (.node.cells | any(.__typename? == "AdMetadataCell" or .isAdPost? == true)) ) then empty else . end) | (if (.node | type == "object") and (.node.adPayload | type == "object") then empty else . end) | (if .__typename == "AdPost" then empty else . end) else . end)'
