@@ -1,0 +1,29 @@
+name: Reddit 去广告 (Stash 优化版)
+desc: 过滤推广, 绕过 NSFW 提示, 自动开启翻译。请确保已开启 Mitm 并在 Stash 根配置中安装并信任 CA 证书。
+
+http:
+  mitm:
+    - "gql.reddit.com"
+    - "gql-fed.reddit.com"
+
+  header-rewrite:
+    # 1. 删除旧的翻译头
+    - "http-request ^https?://gql(-fed)?\.reddit\.com/ header-del x-reddit-translations"
+    # 2. 添加自定义翻译参数 (对应原模块的 TRANSLATION_VALUE)
+    - "http-request ^https?://gql(-fed)?\.reddit\.com/ header-add x-reddit-translations 'enabled, seo, zh-hans'"
+
+  body-rewrite:
+    # 核心 JQ 逻辑：处理了双下划线字段 __typename 并填充了原模块的参数
+    - >-
+      ^https?:\/\/gql(-fed)?\.reddit\.com response-jq 
+      walk(
+        if type == "object" then 
+          (if .isNsfw == true then .isNsfw = false else . end) | 
+          (if .isNsfwMediaBlocked == true then .isNsfwMediaBlocked = false else . end) | 
+          (if .isNsfwContentShown == false then .isNsfwContentShown = true else . end) | 
+          (if (.commentsPageAds | type == "array") then (.commentsPageAds = []) else . end) | 
+          (if ( (.node | type == "object") and (.node.cells | type == "array") and (.node.cells | any(.__typename? == "AdMetadataCell" or .isAdPost? == true)) ) then empty else . end) | 
+          (if (.node | type == "object") and (.node.adPayload | type == "object") then empty else . end) | 
+          (if .__typename == "AdPost" then empty else . end) 
+        else . end
+      )
