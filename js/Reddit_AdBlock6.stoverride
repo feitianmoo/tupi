@@ -1,0 +1,16 @@
+name: Reddit 去广告
+desc: 过滤推广, 关 NSFW 提示, 自动开启翻译(JQ 版)
+
+http:
+  mitm:
+    - "gql.reddit.com"
+    - "gql-fed.reddit.com"
+
+  header-rewrite:
+    # 移除了 http-request 前缀，直接以正则开头；使用单引号包裹避免转义问题
+    - '^https://gql(-fed)?\.reddit\.com/ request-del x-reddit-translations'
+    - '^https://gql(-fed)?\.reddit\.com/ request-add x-reddit-translations enabled'
+
+  body-rewrite:
+    # Stash 原生支持 response-jq，单引号包裹完整的 JQ 脚本最为安全
+    - '^https?://gql(-fed)?\.reddit\.com response-jq walk(if type == "object" then (if .isNsfw == true then .isNsfw = false else . end) | (if .isNsfwMediaBlocked == true then .isNsfwMediaBlocked = false else . end) | (if .isNsfwContentShown == false then .isNsfwContentShown = true else . end) | (if (.commentsPageAds | type == "array") then (.commentsPageAds = []) else . end) | (if ( (.node | type == "object") and (.node.cells | type == "array") and (.node.cells | any(.typename? == "AdMetadataCell" or .isAdPost? == true)) ) then empty else . end) | (if (.node | type == "object") and (.node.adPayload | type == "object") then empty else . end) | (if .typename == "AdPost" then empty else . end) else . end)'
