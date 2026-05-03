@@ -1,0 +1,52 @@
+# Reddit 去广告 (Stash 覆写配置)
+
+# 1. 强制代理主机
+# 在 Stash 中，这通常直接写在规则组或通过 MITM 字段管理，Stash 不需要单独的 force-http-engine-hosts
+mitm:
+  hostname:
+    - gql.reddit.com
+    - gql-fed.reddit.com
+
+# 2. 脚本/覆写逻辑
+# Stash 使用 script 字段来处理 HTTP Rewrite
+script:
+  # 广告去除与 NSFW 处理 (使用 jq)
+  reddit_ads_filter:
+    type: http-response
+    match: ^https?://gql(-fed)?.reddit.com
+    require-body: true
+    body-mode: text
+    script-text: |
+      # 注意：Stash 的 JQ 语法与 Surge 保持一致
+      walk(
+        if type == "object" then
+          (if .isNsfw == true then .isNsfw = false else . end)
+          | (if .isNsfwMediaBlocked == true then .isNsfwMediaBlocked = false else . end)
+          | (if .isNsfwContentShown == false then .isNsfwContentShown = true else . end)
+          | (if (.commentsPageAds | type == "array") then (.commentsPageAds = []) else . end)
+          | (if ( (.node | type == "object") and (.node.cells | type == "array") and (.node.cells | any(.__typename? == "AdMetadataCell" or .isAdPost? == true)) ) then empty else . end)
+          | (if (.node | type == "object") and (.node.adPayload | type == "object") then empty else . end)
+          | (if .__typename == "AdPost" then empty else . end)
+        else . end
+      )
+    argument: "NSFW=Nsfw" # 对应原模块参数
+
+  # 自动翻译 (HTTP Header 修改)
+  reddit_translation:
+    type: http-request
+    match: ^https://gql(-fed)?.reddit.com/
+    # 这里通过 Header Rewrite 实现，Stash 中可以用 script 或直接用 rewrite
+    script-text: |
+      $request.headers["x-reddit-translations"] = "enabled, seo, zh-hans";
+      $done({});
+    # 注意：Stash 中要实现 Header-Del 和 Header-Add，通常使用内置的 header-rewrite 功能更高效
+    # 下方是对应的 rewrite 写法
+
+# 3. 如果想用 Stash 原生的 header-rewrite 语法 (性能更好)
+rewrite:
+  # 开启翻译
+  - match: ^https://gql(-fed)?.reddit.com/
+    name: "Reddit 翻译"
+    type: header-replace
+    header-name: x-reddit-translations
+    header-value: "enabled, seo, zh-hans"
