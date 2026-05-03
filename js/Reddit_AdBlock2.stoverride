@@ -1,0 +1,21 @@
+name: Reddit 去广告
+desc: 过滤推广, 关 NSFW 提示, 自动开启翻译(JQ 版)
+force-http-engine:
+  - "gql.reddit.com"
+  - "gql-fed.reddit.com"
+http:
+  mitm:
+    - "gql.reddit.com"
+    - "gql-fed.reddit.com"
+  rewrite:
+    # 修改1：将 header-del 改为 request-del
+    - >-
+      ^https:\/\/gql(-fed)?\.reddit\.com\/ request-del x-reddit-translations
+    
+    # 修改2：将 header-add 改为 request-add，并给包含空格的值加上引号以防解析截断
+    - >-
+      ^https:\/\/gql(-fed)?\.reddit\.com\/ request-add x-reddit-translations "enabled, seo, zh-hans"
+    
+    # JQ 逻辑无需修改，Stash 原生支持 response-jq
+    - >-
+      ^https?:\/\/gql(-fed)?\.reddit\.com response-jq 'walk( if type == "object" then (if .isNsfw == true then .isNsfw = false else . end) | (if .isNsfwMediaBlocked == true then .isNsfwMediaBlocked = false else . end) | (if .isNsfwContentShown == false then .isNsfwContentShown = true else . end) | (if (.commentsPageAds | type == "array") then (.commentsPageAds = []) else . end) | (if ( (.node | type == "object") and (.node.cells | type == "array") and (.node.cells | any(.__typename? == "AdMetadataCell" or .isAdPost? == true)) ) then empty else . end) | (if (.node | type == "object") and (.node.adPayload | type == "object") then empty else . end) | (if .__typename == "AdPost" then empty else . end) else . end)'
