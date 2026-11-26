@@ -1,9 +1,9 @@
 no_resolve: true
+domain_keyword_set:
+- apple.com.edgekey.net
 domain_suffix_set:
 - push.apple.com
 - akadns.net
-domain_keyword_set:
-- apple.com.edgekey.net
 ip_cidr_set:
 - 17.249.0.0/16
 - 17.252.0.0/16
